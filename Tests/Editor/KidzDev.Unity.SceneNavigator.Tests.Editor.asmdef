@@ -1,0 +1,25 @@
+{
+  "name": "KidzDev.Unity.SceneNavigator.Tests.Editor",
+  "rootNamespace": "KidzDev.Unity.SceneNavigator.Tests",
+  "references": [
+    "KidzDev.Unity.SceneNavigator",
+    "UniTask",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

@@ -1,0 +1,20 @@
+{
+  "name": "com.kidzdev.unity.scene-navigator",
+  "version": "0.1.0",
+  "displayName": "KidzDev Unity Scene Navigator",
+  "description": "Stack-based UI/scene navigation for Unity — push/pop history with a back button, async transitions, and an injectable animation seam. UniTask-only, zero singleton coupling.",
+  "unity": "6000.0",
+  "author": {
+    "name": "KidzDev"
+  },
+  "dependencies": {
+    "com.cysharp.unitask": "2.5.11"
+  },
+  "samples": [
+    {
+      "displayName": "Mail Flow",
+      "description": "A stack navigator driving a Mail feature: Inbox → Message → Delete-confirm, with CanvasGroup fades, a hardware/UI back button, and full push/pop history.",
+      "path": "Samples~/MailFlow"
+    }
+  ]
+}
