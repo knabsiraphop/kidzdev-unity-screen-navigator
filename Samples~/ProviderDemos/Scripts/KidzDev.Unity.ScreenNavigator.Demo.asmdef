@@ -1,0 +1,9 @@
+{
+  "name": "KidzDev.Unity.ScreenNavigator.Demo",
+  "rootNamespace": "KidzDev.Unity.ScreenNavigator.Demo",
+  "references": [
+    "KidzDev.Unity.ScreenNavigator",
+    "UniTask"
+  ],
+  "autoReferenced": false
+}

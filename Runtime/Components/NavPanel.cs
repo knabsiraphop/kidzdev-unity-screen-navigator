@@ -4,9 +4,9 @@ using UnityEngine.Events;
 namespace KidzDev.Unity.ScreenNavigator
 {
     /// <summary>
-    /// Drop-in <see cref="INavScreen"/> for a UI panel. Attach to the panel's root GameObject and register
-    /// it with a <see cref="RegistryScreenProvider{TKey}"/>. Lifecycle hooks are exposed both as overridable
-    /// methods (for subclasses that bind data) and as <see cref="UnityEvent"/>s (for designer wiring).
+    /// Drop-in <see cref="INavScreen"/> for a UI panel. Attach to the panel's root GameObject and
+    /// register it with a provider. <see cref="INavScreen"/> is implemented explicitly so lifecycle
+    /// methods are only callable by the navigator — subclasses override the clean protected hooks.
     /// </summary>
     [AddComponentMenu("KidzDev/Screen Navigator/Nav Panel")]
     [DisallowMultipleComponent]
@@ -28,48 +28,75 @@ namespace KidzDev.Unity.ScreenNavigator
         /// <summary>The payload from the most recent push/replace; <c>null</c> if none.</summary>
         protected object PushArg { get; private set; }
 
-        /// <inheritdoc/>
-        public void OnPushed(object arg)
+        // ── Explicit INavScreen — navigator-only surface ──────────────────────────────────
+
+        GameObject INavScreen.Root => gameObject;
+
+        void INavScreen.OnPushed(object arg)
         {
             PushArg = arg;
-            OnPushedInternal(arg);
+            OnPushed(arg);
             _onPushed?.Invoke();
         }
 
-        /// <inheritdoc/>
-        public void OnRevealed()
+        void INavScreen.OnRevealed()
         {
-            OnRevealedInternal();
+            OnRevealed();
             _onRevealed?.Invoke();
         }
 
-        /// <inheritdoc/>
-        public void OnCovered()
+        void INavScreen.OnCovered()
         {
-            OnCoveredInternal();
+            OnCovered();
             _onCovered?.Invoke();
         }
 
-        /// <inheritdoc/>
-        public void OnPopped()
+        void INavScreen.OnPopped()
         {
-            OnPoppedInternal();
+            OnPopped();
             _onPopped?.Invoke();
         }
 
-        /// <inheritdoc/>
-        public virtual bool OnBackPressed() => _consumesBack;
+        bool INavScreen.OnBackPressed() => OnBackPressed();
 
-        /// <summary>Override to bind incoming data when pushed. <paramref name="arg"/> is the push payload.</summary>
-        protected virtual void OnPushedInternal(object arg) { }
+        // ── Protected hooks — override in subclasses ─────────────────────────────────────
 
-        /// <summary>Override to refresh when this panel becomes the top again after a pop above it.</summary>
-        protected virtual void OnRevealedInternal() { }
+        /// <summary>Called when this panel is pushed. Bind incoming data from <paramref name="arg"/> here.</summary>
+        protected virtual void OnPushed(object arg) { }
 
-        /// <summary>Override to pause work when another panel is pushed over this one.</summary>
-        protected virtual void OnCoveredInternal() { }
+        /// <summary>Called when this panel becomes the top again after the screen above it was popped.</summary>
+        protected virtual void OnRevealed() { }
 
-        /// <summary>Override to release transient state when this panel is popped.</summary>
-        protected virtual void OnPoppedInternal() { }
+        /// <summary>Called when another panel is pushed over this one. Pause timers, audio, etc.</summary>
+        protected virtual void OnCovered() { }
+
+        /// <summary>Called when this panel is popped. Release transient state here.</summary>
+        protected virtual void OnPopped() { }
+
+        /// <summary>
+        /// Called when a back request reaches this panel. Return <c>true</c> to consume it
+        /// (e.g. close an inline dialog); return <c>false</c> to let the navigator pop.
+        /// </summary>
+        protected virtual bool OnBackPressed() => _consumesBack;
+    }
+
+    /// <summary>
+    /// Typed-arg variant of <see cref="NavPanel"/> that eliminates the cast from <c>object</c>.
+    /// Concrete subclasses implement <see cref="OnPushed(TArg)"/> with the exact type they expect.
+    /// </summary>
+    /// <typeparam name="TArg">Type of the push/replace payload.</typeparam>
+    public abstract class NavPanel<TArg> : NavPanel
+    {
+        /// <summary>Sealed so the cast happens once here; override <see cref="OnPushed(TArg)"/> instead.</summary>
+        protected sealed override void OnPushed(object arg)
+        {
+            if (arg is TArg typed)
+                OnPushed(typed);
+            else if (arg != null)
+                Debug.LogWarning($"[{GetType().Name}] Expected arg of type {typeof(TArg).Name} but received {arg.GetType().Name}.");
+        }
+
+        /// <summary>Called with the typed payload when this panel is pushed.</summary>
+        protected abstract void OnPushed(TArg arg);
     }
 }

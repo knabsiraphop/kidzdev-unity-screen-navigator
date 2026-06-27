@@ -1,6 +1,6 @@
 {
   "name": "com.kidzdev.unity.screen-navigator",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "KidzDev Unity Screen Navigator",
   "description": "Stack-based UI/scene navigation for Unity — push/pop history with a back button, async transitions, and an injectable animation seam. UniTask-only, zero singleton coupling.",
   "unity": "6000.0",
@@ -12,9 +12,9 @@
   },
   "samples": [
     {
-      "displayName": "Mail Flow",
-      "description": "A stack navigator driving a Mail feature: Inbox → Message → Delete-confirm, with CanvasGroup fades, a hardware/UI back button, and full push/pop history.",
-      "path": "Samples~/MailFlow"
+      "displayName": "Provider Demos",
+      "description": "Three scenes (Registry / Prefab / Resources) sharing one controller — compare how each provider loads screens, with a live instance count.",
+      "path": "Samples~/ProviderDemos"
     }
   ]
 }

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-28
+
+### Added
+- `ScreenNavigatorHost` — zero-code Inspector setup for the common scene-panels + string-keys case. Populate `Screens`, pick `Transition Mode` (`Instant` / `Fade`), set `Initial Screen`, and optionally wire a `NavBackButton` and `On Back At Root` callback. `Navigator` property exposes the underlying `SubScreenNavigator<string>` for code-driven pushes.
+- `PrefabScreenProvider<TKey>` — instantiates a registered prefab on each `ResolveAsync` and destroys the instance on `Release`. Allows the same key to appear more than once in the navigation stack.
+- `ResourcesScreenProvider<TKey>` — loads prefabs from `Resources` by registered path, instantiates on resolve, and destroys on release. Same allow-repeats behaviour as `PrefabScreenProvider`.
+- `NavPanel<TArg>` — typed-arg base class that eliminates the cast from `object`. Override `OnPushed(TArg arg)` directly.
+- `SubScreenNavigator<TKey>`: `Current` (top key, or `default` when empty), `HasCurrent`, `CopyStackKeysTo(IList<TKey>)` (non-allocating stack snapshot), injectable key `IEqualityComparer<TKey>` constructor parameter.
+- **Provider Demos** sample — three scenes (`1_Registry`, `2_Prefab`, `3_Resources`) sharing one controller to compare how each provider loads screens, with a live instance count. Import via Package Manager.
+
+### Changed
+- **Breaking:** `NavPanel` lifecycle override hooks renamed — subclasses must rename their overrides:
+  - `OnPushedInternal(object arg)` → `OnPushed(object arg)`
+  - `OnRevealedInternal()` → `OnRevealed()`
+  - `OnCoveredInternal()` → `OnCovered()`
+  - `OnPoppedInternal()` → `OnPopped()`
+  
+  `INavScreen` is still implemented explicitly so the navigator-only surface is unchanged; only the protected hooks that subclasses override have been renamed.
+- **Sample replaced:** the Mail Flow sample has been removed and replaced with the new Provider Demos sample.
+
 ## [1.0.0] - 2026-06-27
 
 ### Added
