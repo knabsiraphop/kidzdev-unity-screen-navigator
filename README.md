@@ -1,4 +1,4 @@
-# KidzDev Unity Scene Navigator
+# KidzDev Unity Screen Navigator
 
 Stack-based UI/scene navigation for Unity — push/pop **history** with a back button, async transitions, and an injectable animation seam. UniTask-only, zero singleton coupling.
 
@@ -9,7 +9,7 @@ A back stack is a **stack**, not a finite state machine. An FSM has one current 
 | You need | Use |
 |---|---|
 | Fixed graph, no history (boot flow, scene-to-scene) | [`AsyncStateMachine`](https://github.com/knabsiraphop/kidzdev-unity-state-machine) |
-| Push/pop history, back button, same screen repeats | **this package** (`SubSceneNavigator<TKey>`) |
+| Push/pop history, back button, same screen repeats | **this package** (`SubScreenNavigator<TKey>`) |
 
 It reuses the state machine's transition discipline (single-in-flight, lifetime-cancellation) without taking a dependency on it.
 
@@ -20,7 +20,7 @@ Add to your project's `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.kidzdev.unity.scene-navigator": "https://github.com/knabsiraphop/kidzdev-unity-scene-navigator.git#v0.1.0"
+    "com.kidzdev.unity.screen-navigator": "https://github.com/knabsiraphop/kidzdev-unity-screen-navigator.git#v1.0.0"
   }
 }
 ```
@@ -39,7 +39,7 @@ var provider = new RegistryScreenProvider<Screen>()
     .Register(Screen.ConfirmDelete, confirmPanel);
 
 // 2. Create the navigator with a fade transition.
-var nav = new SubSceneNavigator<Screen>(provider, new CanvasGroupFadeTransition(0.2f))
+var nav = new SubScreenNavigator<Screen>(provider, new CanvasGroupFadeTransition(0.2f))
 {
     EnableLogging = true,
 };
@@ -69,6 +69,8 @@ nav.Dispose();
 | `PopToAsync(key)` | Collapse back to the nearest screen with `key` below the top. |
 | `HandleBackAsync()` | Offer back to the screen first (`OnBackPressed`); else pop. Returns `false` at root. |
 
+Inspect the stack with `Contains(key)` and `GetStackKeys()` (a fresh bottom→top snapshot, handy for breadcrumbs), plus `Current` / `HasCurrent` / `Depth` / `CanGoBack` / `IsTransitioning`.
+
 ## Screens
 
 Attach `NavPanel` to a panel root (or implement `INavScreen` yourself). Screens are **visually passive** — the navigator toggles active state, the transition animates. Override the hooks to bind data:
@@ -93,7 +95,8 @@ public sealed class MessagePanel : NavPanel
 | Guarantee | How |
 |---|---|
 | One transition at a time | `NavGate` serializes operations; overlaps are dropped (`DropWhileBusy`, default) or FIFO-queued (`Queue`). |
-| Deterministic on cancel | Stack is committed **before** the animation; a cancelled transition leaves the stack settled and propagates the exception. |
+| Deterministic on cancel | Stack is committed **before** the animation; a cancelled transition leaves the stack settled and propagates the exception. A caller token and `Dispose()` both cancel an in-flight transition. |
+| One instance, one slot | Pushing a screen already on the stack throws `InvalidOperationException`. To repeat a key in the history, use a provider that instantiates a fresh screen per push. |
 | No input leak mid-fade | `CanvasGroupFadeTransition` blocks raycasts during the fade, restores them on the survivor. |
 | Touch-mash safety | Default `DropWhileBusy` — a double-tap can't double-push; back-mash can't over-pop during an animation. |
 | Clean disposal | Lifetime `CancellationTokenSource` cancels in-flight work; every remaining screen is released through the provider. |
@@ -122,8 +125,8 @@ Main-thread only; frame-and-await reentrancy safe. Re-entrant calls from a lifec
 
 ## Samples
 
-Import via **Package Manager → KidzDev Unity Scene Navigator → Samples**.
+Import via **Package Manager → KidzDev Unity Screen Navigator → Samples**.
 
 ### Mail Flow
 
-A Mail feature driven by `SubSceneNavigator<MailScreen>`: **Inbox → Message → Delete-confirm**. Demonstrates a real push/pop history (open a message, open the delete confirm, back out step by step), CanvasGroup fades on every move, and a back button that pops the stack and quits at the root.
+A Mail feature driven by `SubScreenNavigator<MailScreen>`: **Inbox → Message → Delete-confirm**. Demonstrates a real push/pop history (open a message, open the delete confirm, back out step by step), CanvasGroup fades on every move, and a back button that pops the stack and quits at the root.

@@ -1,17 +1,15 @@
 {
-  "name": "KidzDev.Unity.SceneNavigator.MailFlow",
-  "rootNamespace": "KidzDev.Unity.SceneNavigator.MailFlow",
+  "name": "KidzDev.Unity.ScreenNavigator",
+  "rootNamespace": "KidzDev.Unity.ScreenNavigator",
   "references": [
-    "KidzDev.Unity.SceneNavigator",
-    "UniTask",
-    "UnityEngine.UI"
+    "UniTask"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
   "overrideReferences": false,
   "precompiledReferences": [],
-  "autoReferenced": false,
+  "autoReferenced": true,
   "defineConstraints": [],
   "versionDefines": [],
   "noEngineReferences": false

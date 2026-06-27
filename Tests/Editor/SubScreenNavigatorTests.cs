@@ -1,13 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
 
-namespace KidzDev.Unity.SceneNavigator.Tests
+namespace KidzDev.Unity.ScreenNavigator.Tests
 {
     [TestFixture]
-    internal sealed class SubSceneNavigatorTests
+    internal sealed class SubScreenNavigatorTests
     {
         private readonly List<TestScreen> _screens = new List<TestScreen>();
 
@@ -26,14 +27,14 @@ namespace KidzDev.Unity.SceneNavigator.Tests
             return s;
         }
 
-        private (SubSceneNavigator<NavKey> nav, TestProvider provider) Build(
+        private (SubScreenNavigator<NavKey> nav, TestProvider provider) Build(
             INavTransition transition = null,
             NavQueuePolicy policy = NavQueuePolicy.DropWhileBusy,
             params (NavKey key, TestScreen screen)[] screens)
         {
             var provider = new TestProvider();
             foreach (var (key, screen) in screens) provider.Register(key, screen);
-            var nav = new SubSceneNavigator<NavKey>(provider, transition ?? new InstantTransition(), policy);
+            var nav = new SubScreenNavigator<NavKey>(provider, transition ?? new InstantTransition(), policy);
             return (nav, provider);
         }
 
@@ -377,6 +378,94 @@ namespace KidzDev.Unity.SceneNavigator.Tests
             Assert.IsFalse(nav.CanGoBack);
             Run(nav.PushAsync(NavKey.Message));
             Assert.IsTrue(nav.CanGoBack);
+        }
+
+        // ── Stack inspection ────────────────────────────────────────────────────────────
+
+        [Test]
+        public void Contains_And_GetStackKeys_ReflectStack()
+        {
+            var a = Screen("A");
+            var b = Screen("B");
+            var (nav, _) = Build(screens: new[] { (NavKey.Inbox, a), (NavKey.Message, b) });
+
+            Run(nav.PushAsync(NavKey.Inbox));
+            Run(nav.PushAsync(NavKey.Message));
+
+            Assert.IsTrue(nav.Contains(NavKey.Inbox));
+            Assert.IsTrue(nav.Contains(NavKey.Message));
+            Assert.IsFalse(nav.Contains(NavKey.Confirm));
+
+            var keys = nav.GetStackKeys();
+            Assert.AreEqual(2, keys.Count);
+            Assert.AreEqual(NavKey.Inbox, keys[0]);   // bottom (root)
+            Assert.AreEqual(NavKey.Message, keys[1]); // top
+        }
+
+        // ── Guards & cadence ────────────────────────────────────────────────────────────
+
+        [Test]
+        public void Push_SameScreenInstanceTwice_Throws()
+        {
+            var a = Screen("A");
+            var (nav, _) = Build(screens: (NavKey.Inbox, a)); // shared instance per key
+
+            Run(nav.PushAsync(NavKey.Inbox));
+            // Pushing the same key again resolves the same instance — must throw, not corrupt the stack.
+            Assert.Throws<InvalidOperationException>(() => Run(nav.PushAsync(NavKey.Inbox)));
+            Assert.AreEqual(1, nav.Depth);
+            Assert.IsFalse(nav.IsTransitioning);
+        }
+
+        [Test]
+        public void Changed_FiresOncePerOperation()
+        {
+            var a = Screen("A");
+            var b = Screen("B");
+            var (nav, _) = Build(screens: new[] { (NavKey.Inbox, a), (NavKey.Message, b) });
+            int changed = 0;
+            nav.Changed += () => changed++;
+
+            Run(nav.PushAsync(NavKey.Inbox));      // 1
+            Run(nav.PushAsync(NavKey.Message));    // 2
+            Run(nav.PopAsync());                   // 3
+            Run(nav.ReplaceAsync(NavKey.Message)); // 4
+
+            Assert.AreEqual(4, changed);
+        }
+
+        [Test]
+        public void PopToRoot_AtRoot_IsNoOp()
+        {
+            var a = Screen("A");
+            var (nav, _) = Build(screens: (NavKey.Inbox, a));
+            Run(nav.PushAsync(NavKey.Inbox));
+            Run(nav.PopToRootAsync());
+
+            Assert.AreEqual(1, nav.Depth);
+            Assert.AreEqual(NavKey.Inbox, nav.Current);
+        }
+
+        // ── Cancellation ────────────────────────────────────────────────────────────────
+
+        [Test]
+        public void Cancellation_DuringResolve_LeavesStackUnchanged()
+        {
+            var a = Screen("A");
+            var (nav, provider) = Build(screens: (NavKey.Inbox, a));
+            provider.ResolveGate = new UniTaskCompletionSource(); // suspend the resolve
+
+            var cts = new CancellationTokenSource();
+            var pushing = nav.PushAsync(NavKey.Inbox, ct: cts.Token);
+            Assert.AreEqual(0, nav.Depth, "nothing committed while resolve is suspended");
+            Assert.IsTrue(nav.IsTransitioning);
+
+            cts.Cancel(); // caller token must reach the in-flight operation
+
+            Assert.Throws<OperationCanceledException>(() => pushing.GetAwaiter().GetResult());
+            Assert.AreEqual(0, nav.Depth);
+            Assert.IsFalse(a.IsActive);
+            Assert.IsFalse(nav.IsTransitioning, "gate guard cleared after cancellation");
         }
     }
 }

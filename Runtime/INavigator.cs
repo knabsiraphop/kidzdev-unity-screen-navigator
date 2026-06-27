@@ -1,11 +1,11 @@
 using System.Threading;
 using Cysharp.Threading.Tasks;
 
-namespace KidzDev.Unity.SceneNavigator
+namespace KidzDev.Unity.ScreenNavigator
 {
     /// <summary>
     /// Non-generic navigation surface used by key-agnostic components such as <see cref="NavBackButton"/>.
-    /// Implemented by <see cref="SubSceneNavigator{TKey}"/>.
+    /// Implemented by <see cref="SubScreenNavigator{TKey}"/>.
     /// </summary>
     public interface INavigator
     {

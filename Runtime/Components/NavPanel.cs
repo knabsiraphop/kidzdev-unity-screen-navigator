@@ -1,13 +1,14 @@
 using UnityEngine;
 using UnityEngine.Events;
 
-namespace KidzDev.Unity.SceneNavigator
+namespace KidzDev.Unity.ScreenNavigator
 {
     /// <summary>
     /// Drop-in <see cref="INavScreen"/> for a UI panel. Attach to the panel's root GameObject and register
     /// it with a <see cref="RegistryScreenProvider{TKey}"/>. Lifecycle hooks are exposed both as overridable
     /// methods (for subclasses that bind data) and as <see cref="UnityEvent"/>s (for designer wiring).
     /// </summary>
+    [AddComponentMenu("KidzDev/Screen Navigator/Nav Panel")]
     [DisallowMultipleComponent]
     public class NavPanel : MonoBehaviour, INavScreen
     {

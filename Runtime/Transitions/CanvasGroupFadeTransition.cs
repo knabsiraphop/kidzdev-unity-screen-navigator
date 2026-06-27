@@ -2,7 +2,7 @@ using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 
-namespace KidzDev.Unity.SceneNavigator
+namespace KidzDev.Unity.ScreenNavigator
 {
     /// <summary>
     /// Cross-fades screens using a <see cref="CanvasGroup"/> on each screen's root, with no third-party

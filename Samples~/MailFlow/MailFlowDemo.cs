@@ -1,21 +1,26 @@
+using System.Text;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-namespace KidzDev.Unity.SceneNavigator.MailFlow
+namespace KidzDev.Unity.ScreenNavigator.MailFlow
 {
     /// <summary>
-    /// A self-contained Mail feature driven by <see cref="SubSceneNavigator{TKey}"/>:
+    /// A self-contained Mail feature driven by <see cref="SubScreenNavigator{TKey}"/>:
     /// <b>Inbox → Message → Delete-confirm</b>. Everything (Canvas, panels, buttons) is built in code so the
     /// scene needs only this one component.
     /// </summary>
     /// <remarks>
     /// What it demonstrates:
     /// <list type="bullet">
-    ///   <item><c>PushAsync</c> to open a message, and again to open the delete confirm — real push/pop history.</item>
-    ///   <item><c>PopAsync</c> / a hardware-and-UI back button via <see cref="NavBackButton"/>.</item>
-    ///   <item><c>PopToAsync(Inbox)</c> to collapse straight back after a delete.</item>
+    ///   <item><c>PushAsync(arg)</c> to open a message; <see cref="MessagePanel"/> binds the content from the
+    ///         payload in its <c>OnPushedInternal</c> — the idiomatic data-passing pattern.</item>
+    ///   <item><c>PopAsync</c> and a hardware-and-UI back button via <see cref="NavBackButton"/>, with an
+    ///         <c>OnBackAtRoot</c> hint when back can't go any further.</item>
+    ///   <item><c>PopToAsync(Inbox)</c> to collapse straight back after a delete, and <c>PopToRootAsync</c>
+    ///         via the Home button.</item>
+    ///   <item>A live breadcrumb built from <see cref="SubScreenNavigator{TKey}.GetStackKeys"/>.</item>
     ///   <item>CanvasGroup cross-fades on every transition, with <see cref="NavQueuePolicy.DropWhileBusy"/> safety.</item>
     /// </list>
     /// </remarks>
@@ -25,13 +30,10 @@ namespace KidzDev.Unity.SceneNavigator.MailFlow
 
         private readonly MailStore _store = new MailStore();
 
-        private SubSceneNavigator<Screen> _nav;
+        private SubScreenNavigator<Screen> _nav;
         private int _currentMailId;
 
-        // Bound UI bits that change with content.
         private Text _statusText;
-        private Text _messageSubject;
-        private Text _messageBody;
         private RectTransform _inboxList;
         private Font _font;
 
@@ -51,7 +53,7 @@ namespace KidzDev.Unity.SceneNavigator.MailFlow
                 .Register(Screen.Message, message)
                 .Register(Screen.Confirm, confirm);
 
-            _nav = new SubSceneNavigator<Screen>(provider, new CanvasGroupFadeTransition(0.18f))
+            _nav = new SubScreenNavigator<Screen>(provider, new CanvasGroupFadeTransition(0.18f))
             {
                 EnableLogging = true,
             };
@@ -67,11 +69,11 @@ namespace KidzDev.Unity.SceneNavigator.MailFlow
 
         private void OnDestroy() => _nav?.Dispose();
 
-        // ── Screen building ──────────────────────────────────────────────────────────────
+        // ── Screens ──────────────────────────────────────────────────────────────────────
 
         private NavPanel BuildInbox(Canvas canvas)
         {
-            var (root, panel) = NewPanel(canvas, "InboxPanel", new Color(0.12f, 0.16f, 0.28f));
+            var (root, panel) = NewPanel<NavPanel>(canvas, "InboxPanel", new Color(0.12f, 0.16f, 0.28f));
             Label(root, "Inbox", 34, new Vector2(0, -50), TextAnchor.MiddleCenter, 600, 50);
 
             var listGo = new GameObject("List", typeof(RectTransform));
@@ -79,22 +81,16 @@ namespace KidzDev.Unity.SceneNavigator.MailFlow
             _inboxList.SetParent(root.transform, false);
             _inboxList.anchoredPosition = new Vector2(0, 60);
 
-            int i = 0;
-            foreach (var mail in _store.All)
-            {
-                int id = mail.Id;
-                Button(_inboxList, $"✉  {mail.Subject}", new Vector2(0, -i * 90), 560, 70,
-                    () => OpenMessage(id));
-                i++;
-            }
+            RebuildInboxList();
             return panel;
         }
 
         private NavPanel BuildMessage(Canvas canvas)
         {
-            var (root, panel) = NewPanel(canvas, "MessagePanel", new Color(0.10f, 0.24f, 0.22f));
-            _messageSubject = Label(root, "Subject", 30, new Vector2(0, -50), TextAnchor.MiddleCenter, 640, 50);
-            _messageBody    = Label(root, "Body", 22, new Vector2(0, 40), TextAnchor.UpperLeft, 640, 280);
+            var (root, panel) = NewPanel<MessagePanel>(canvas, "MessagePanel", new Color(0.10f, 0.24f, 0.22f));
+            var subject = Label(root, "Subject", 30, new Vector2(0, -50), TextAnchor.MiddleCenter, 640, 50);
+            var body    = Label(root, "Body", 22, new Vector2(0, 40), TextAnchor.UpperLeft, 640, 280);
+            panel.Configure(_store, subject, body);
 
             Button(root.transform, "Delete", new Vector2(-150, -260), 250, 70,
                 () => _nav.PushAsync(Screen.Confirm, ct: destroyCancellationToken).Forget());
@@ -105,7 +101,7 @@ namespace KidzDev.Unity.SceneNavigator.MailFlow
 
         private NavPanel BuildConfirm(Canvas canvas)
         {
-            var (root, panel) = NewPanel(canvas, "ConfirmPanel", new Color(0.30f, 0.10f, 0.12f));
+            var (root, panel) = NewPanel<NavPanel>(canvas, "ConfirmPanel", new Color(0.30f, 0.10f, 0.12f));
             Label(root, "Delete this message?", 30, new Vector2(0, 60), TextAnchor.MiddleCenter, 640, 60);
 
             Button(root.transform, "Yes, delete", new Vector2(-150, -40), 250, 70, OnConfirmDelete);
@@ -119,11 +115,7 @@ namespace KidzDev.Unity.SceneNavigator.MailFlow
         private void OpenMessage(int id)
         {
             _currentMailId = id;
-            if (_store.TryGet(id, out var mail))
-            {
-                _messageSubject.text = mail.Subject;
-                _messageBody.text = mail.Body;
-            }
+            // No imperative widget poking — MessagePanel binds itself from this arg in OnPushedInternal.
             _nav.PushAsync(Screen.Message, arg: id, ct: destroyCancellationToken).Forget();
         }
 
@@ -140,6 +132,12 @@ namespace KidzDev.Unity.SceneNavigator.MailFlow
             for (int c = _inboxList.childCount - 1; c >= 0; c--)
                 Destroy(_inboxList.GetChild(c).gameObject);
 
+            if (_store.All.Count == 0)
+            {
+                Label(_inboxList.gameObject, "📭  No messages", 24, Vector2.zero, TextAnchor.MiddleCenter, 560, 70);
+                return;
+            }
+
             int i = 0;
             foreach (var mail in _store.All)
             {
@@ -153,8 +151,20 @@ namespace KidzDev.Unity.SceneNavigator.MailFlow
         private void RefreshStatus()
         {
             if (_statusText == null) return;
-            _statusText.text = $"Depth: {_nav.Depth}    Current: {_nav.Current}    " +
-                               (_nav.CanGoBack ? "(Back pops)" : "(Back at root)");
+
+            var crumb = new StringBuilder();
+            var keys = _nav.GetStackKeys();
+            for (int i = 0; i < keys.Count; i++)
+            {
+                if (i > 0) crumb.Append("  ›  ");
+                crumb.Append(keys[i]);
+            }
+            _statusText.text = $"{crumb}      (depth {_nav.Depth})";
+        }
+
+        private void OnBackAtRoot()
+        {
+            if (_statusText != null) _statusText.text = "Inbox      (at root — back would exit the app)";
         }
 
         // ── UI scaffolding (sample-only helpers) ─────────────────────────────────────────
@@ -190,17 +200,21 @@ namespace KidzDev.Unity.SceneNavigator.MailFlow
             rt.anchorMax = new Vector2(0.5f, 0f);
             rt.pivot = new Vector2(0.5f, 0f);
             rt.sizeDelta = new Vector2(800, 110);
-            rt.anchoredPosition = new Vector2(0, 0);
+            rt.anchoredPosition = Vector2.zero;
             bar.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.6f);
 
-            _statusText = Label(bar, "Depth: 0", 22, new Vector2(0, 32), TextAnchor.MiddleCenter, 760, 40);
+            _statusText = Label(bar, "…", 22, new Vector2(0, 34), TextAnchor.MiddleCenter, 760, 40);
 
             var backButton = bar.AddComponent<NavBackButton>();
             backButton.Bind(_nav);
-            Button(bar.transform, "◀ Back", new Vector2(0, -28), 300, 56, () => backButton.TriggerBack());
+            backButton.OnBackAtRoot.AddListener(OnBackAtRoot);
+
+            Button(bar.transform, "◀ Back", new Vector2(-150, -26), 280, 56, () => backButton.TriggerBack());
+            Button(bar.transform, "⌂ Home", new Vector2(150, -26), 280, 56,
+                () => _nav.PopToRootAsync(destroyCancellationToken).Forget());
         }
 
-        private (GameObject root, NavPanel panel) NewPanel(Canvas canvas, string name, Color color)
+        private (GameObject root, T panel) NewPanel<T>(Canvas canvas, string name, Color color) where T : NavPanel
         {
             var go = new GameObject(name, typeof(Image), typeof(CanvasGroup));
             var rt = (RectTransform)go.transform;
@@ -210,7 +224,7 @@ namespace KidzDev.Unity.SceneNavigator.MailFlow
             rt.offsetMin = Vector2.zero;
             rt.offsetMax = new Vector2(0, -120); // leave room for the status bar
             go.GetComponent<Image>().color = color;
-            var panel = go.AddComponent<NavPanel>();
+            var panel = go.AddComponent<T>();
             return (go, panel);
         }
 

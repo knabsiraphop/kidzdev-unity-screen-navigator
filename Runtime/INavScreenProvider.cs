@@ -1,7 +1,7 @@
 using System.Threading;
 using Cysharp.Threading.Tasks;
 
-namespace KidzDev.Unity.SceneNavigator
+namespace KidzDev.Unity.ScreenNavigator
 {
     /// <summary>
     /// Resolves a navigation key to an <see cref="INavScreen"/> instance, and releases it when popped.
@@ -12,6 +12,13 @@ namespace KidzDev.Unity.SceneNavigator
     /// Implementations may return a pre-registered in-scene panel (see <see cref="RegistryScreenProvider{TKey}"/>),
     /// instantiate a prefab, or load one via Addressables. <see cref="ResolveAsync"/> is awaited so async
     /// loads complete before the enter transition begins.
+    /// <para>
+    /// <b>Shared vs. instancing providers:</b> a provider that returns a single shared instance per key (such as
+    /// <see cref="RegistryScreenProvider{TKey}"/>) cannot have that key appear at two stack positions at once —
+    /// the navigator throws if a resolved instance is already on the stack. To let a key repeat in the history,
+    /// return a freshly instantiated screen from each <see cref="ResolveAsync"/> and destroy it in
+    /// <see cref="Release"/>.
+    /// </para>
     /// </remarks>
     public interface INavScreenProvider<TKey>
     {

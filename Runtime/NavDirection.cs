@@ -1,4 +1,4 @@
-namespace KidzDev.Unity.SceneNavigator
+namespace KidzDev.Unity.ScreenNavigator
 {
     /// <summary>
     /// Direction of a navigation transition, passed to <see cref="INavTransition"/> so an

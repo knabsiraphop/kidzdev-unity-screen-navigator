@@ -3,7 +3,7 @@ using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 
-namespace KidzDev.Unity.SceneNavigator.Tests
+namespace KidzDev.Unity.ScreenNavigator.Tests
 {
     internal enum NavKey { Inbox, Message, Confirm, Other }
 
@@ -38,17 +38,22 @@ namespace KidzDev.Unity.SceneNavigator.Tests
         public readonly Dictionary<NavKey, int> ReleaseCounts = new Dictionary<NavKey, int>();
         public bool ReturnNull;
 
+        /// <summary>When set, <see cref="ResolveAsync"/> awaits this (honoring the token) before returning —
+        /// lets a test suspend a resolve and then cancel it.</summary>
+        public UniTaskCompletionSource ResolveGate;
+
         public TestProvider Register(NavKey key, INavScreen screen)
         {
             _screens[key] = screen;
             return this;
         }
 
-        public UniTask<INavScreen> ResolveAsync(NavKey key, object arg, CancellationToken ct)
+        public async UniTask<INavScreen> ResolveAsync(NavKey key, object arg, CancellationToken ct)
         {
             ResolveCounts[key] = ResolveCounts.TryGetValue(key, out var c) ? c + 1 : 1;
-            if (ReturnNull) return UniTask.FromResult<INavScreen>(null);
-            return UniTask.FromResult(_screens[key]);
+            if (ResolveGate != null) await ResolveGate.Task.AttachExternalCancellation(ct);
+            if (ReturnNull) return null;
+            return _screens[key];
         }
 
         public void Release(NavKey key, INavScreen screen)

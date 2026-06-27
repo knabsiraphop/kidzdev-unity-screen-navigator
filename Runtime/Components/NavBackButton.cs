@@ -2,7 +2,7 @@ using Cysharp.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Events;
 
-namespace KidzDev.Unity.SceneNavigator
+namespace KidzDev.Unity.ScreenNavigator
 {
     /// <summary>
     /// Routes back requests to an <see cref="INavigator"/>. Listens for the hardware/Escape back key and can
@@ -13,6 +13,8 @@ namespace KidzDev.Unity.SceneNavigator
     /// The navigator is key-generic, so bind it from code after constructing it:
     /// <c>backButton.Bind(navigator);</c>.
     /// </remarks>
+    [AddComponentMenu("KidzDev/Screen Navigator/Nav Back Button")]
+    [DisallowMultipleComponent]
     public sealed class NavBackButton : MonoBehaviour
     {
         [Tooltip("Listen for the Escape / Android hardware back key.")]
@@ -23,8 +25,12 @@ namespace KidzDev.Unity.SceneNavigator
 
         private INavigator _navigator;
 
-        /// <summary>Raised when a back request reaches the root and cannot be handled.</summary>
-        public UnityEvent OnBackAtRoot => _onBackAtRoot;
+        /// <summary>
+        /// Raised when a back request reaches the root and cannot be handled. Lazily initialized so it is
+        /// safe to use whether the component is added in the Inspector or at runtime via <c>AddComponent</c>
+        /// (where serialized fields are not populated).
+        /// </summary>
+        public UnityEvent OnBackAtRoot => _onBackAtRoot ??= new UnityEvent();
 
         /// <summary>Binds the navigator this button drives.</summary>
         public void Bind(INavigator navigator) => _navigator = navigator;
@@ -48,7 +54,7 @@ namespace KidzDev.Unity.SceneNavigator
         {
             if (_navigator == null) return;
             bool handled = await _navigator.HandleBackAsync(destroyCancellationToken);
-            if (!handled) _onBackAtRoot?.Invoke();
+            if (!handled) OnBackAtRoot.Invoke();
         }
     }
 }

@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace KidzDev.Unity.SceneNavigator
+namespace KidzDev.Unity.ScreenNavigator
 {
     /// <summary>
     /// A navigable view managed by a navigator — typically a UI panel, but it can be anything with

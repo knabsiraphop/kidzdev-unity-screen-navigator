@@ -4,29 +4,33 @@ using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
 
-namespace KidzDev.Unity.SceneNavigator
+namespace KidzDev.Unity.ScreenNavigator
 {
     /// <summary>
     /// Stack-based screen navigator with push/pop history. Unlike a finite state machine (fixed graph,
-    /// single current state), this keeps a true navigation stack: the same key can appear more than once,
-    /// and <c>Pop</c> returns to whatever was beneath the top — like a mobile app's back stack.
+    /// single current state), this keeps a true navigation stack: the same key can appear more than once
+    /// (when the <see cref="INavScreenProvider{TKey}"/> returns a fresh screen instance per resolve), and
+    /// <c>Pop</c> returns to whatever was beneath the top — like a mobile app's back stack.
     /// </summary>
     /// <typeparam name="TKey">Key type identifying a screen (enum, string, etc.).</typeparam>
     /// <remarks>
     /// <b>Guarantees</b>
     /// <list type="bullet">
     ///   <item>One transition at a time. Concurrent requests are dropped or queued per
-    ///         <see cref="NavQueuePolicy"/> (default <see cref="NavQueuePolicy.DropWhileBusy"/>).</item>
+    ///         <see cref="NavQueuePolicy"/> (default <see cref="NavQueuePolicy.DropWhileBusy"/>). A queued
+    ///         request's <c>UniTask</c> completes immediately — the operation itself runs later.</item>
     ///   <item>The stack is committed <i>before</i> the transition animates; if a transition is cancelled
     ///         the stack stays committed and the exception propagates, so callers can re-drive deterministically.</item>
     ///   <item>Screens are visually passive — the navigator owns active-state toggling, the injected
     ///         <see cref="INavTransition"/> owns the animation.</item>
+    ///   <item>A screen instance is never placed at two stack positions at once: pushing an instance that is
+    ///         already on the stack throws <see cref="InvalidOperationException"/> (see <see cref="PushAsync"/>).</item>
     ///   <item><see cref="Dispose"/> cancels in-flight work via a lifetime <see cref="CancellationTokenSource"/>
     ///         and releases every remaining screen through the provider.</item>
     /// </list>
     /// Main-thread only.
     /// </remarks>
-    public sealed class SubSceneNavigator<TKey> : INavigator, IDisposable
+    public sealed class SubScreenNavigator<TKey> : INavigator, IDisposable
     {
         private readonly INavScreenProvider<TKey> _provider;
         private readonly INavTransition _transition;
@@ -56,7 +60,7 @@ namespace KidzDev.Unity.SceneNavigator
         /// <param name="provider">Resolves keys to screens and releases them on pop. Required.</param>
         /// <param name="transition">Animation seam; defaults to <see cref="InstantTransition"/> when null.</param>
         /// <param name="policy">Concurrency policy for overlapping requests.</param>
-        public SubSceneNavigator(
+        public SubScreenNavigator(
             INavScreenProvider<TKey> provider,
             INavTransition transition = null,
             NavQueuePolicy policy = NavQueuePolicy.DropWhileBusy)
@@ -85,20 +89,48 @@ namespace KidzDev.Unity.SceneNavigator
 
         private NavEntry<TKey> Top => _stack.Count > 0 ? _stack[_stack.Count - 1] : null;
 
+        /// <summary>Returns <c>true</c> if any screen currently on the stack has key <paramref name="key"/>.</summary>
+        public bool Contains(TKey key)
+        {
+            var cmp = EqualityComparer<TKey>.Default;
+            for (int i = 0; i < _stack.Count; i++)
+                if (cmp.Equals(_stack[i].Key, key)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Returns a fresh snapshot of the stack keys ordered bottom (root) → top. Useful for breadcrumbs.
+        /// Allocates a new list; the navigator's own stack is not exposed.
+        /// </summary>
+        public IReadOnlyList<TKey> GetStackKeys()
+        {
+            var keys = new List<TKey>(_stack.Count);
+            for (int i = 0; i < _stack.Count; i++) keys.Add(_stack[i].Key);
+            return keys;
+        }
+
         // ── Operations ──────────────────────────────────────────────────────────────────
 
         /// <summary>Pushes <paramref name="key"/> onto the stack, animating it in over the current top.</summary>
-        public UniTask PushAsync(TKey key, object arg = null, CancellationToken ct = default)
+        /// <exception cref="InvalidOperationException">
+        /// Thrown if the provider resolves a screen instance that is already on the stack — a shared-instance
+        /// provider (e.g. <see cref="RegistryScreenProvider{TKey}"/>) cannot place one screen at two positions.
+        /// Use a provider that instantiates a new screen per push to allow a key to repeat.
+        /// </exception>
+        public async UniTask PushAsync(TKey key, object arg = null, CancellationToken ct = default)
         {
             ThrowIfDisposed();
+            // Awaited (not returned) so the linked CTS lives for the whole operation — otherwise caller-token
+            // and Dispose() cancellation would be lost as soon as this method returned its task.
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCts.Token);
-            return _gate.RunAsync(t => PushCoreAsync(key, arg, t), linked.Token);
+            await _gate.RunAsync(t => PushCoreAsync(key, arg, t), linked.Token);
         }
 
         private async UniTask PushCoreAsync(TKey key, object arg, CancellationToken token)
         {
             var from = Top;
             var screen = await ResolveAsync(key, arg, token);
+            GuardNotOnStack(key, screen);
 
             Activate(screen);
             screen.OnPushed(arg);
@@ -114,11 +146,11 @@ namespace KidzDev.Unity.SceneNavigator
         }
 
         /// <summary>Pops the top screen, animating it out and revealing the one beneath. No-op on an empty stack.</summary>
-        public UniTask PopAsync(CancellationToken ct = default)
+        public async UniTask PopAsync(CancellationToken ct = default)
         {
             ThrowIfDisposed();
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCts.Token);
-            return _gate.RunAsync(PopCoreAsync, linked.Token);
+            await _gate.RunAsync(PopCoreAsync, linked.Token);
         }
 
         private async UniTask PopCoreAsync(CancellationToken token)
@@ -149,17 +181,19 @@ namespace KidzDev.Unity.SceneNavigator
         }
 
         /// <summary>Replaces the top screen with <paramref name="key"/> (stack depth unchanged). Pushes if the stack is empty.</summary>
-        public UniTask ReplaceAsync(TKey key, object arg = null, CancellationToken ct = default)
+        public async UniTask ReplaceAsync(TKey key, object arg = null, CancellationToken ct = default)
         {
             ThrowIfDisposed();
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCts.Token);
-            return _gate.RunAsync(t => ReplaceCoreAsync(key, arg, t), linked.Token);
+            await _gate.RunAsync(t => ReplaceCoreAsync(key, arg, t), linked.Token);
         }
 
         private async UniTask ReplaceCoreAsync(TKey key, object arg, CancellationToken token)
         {
             var old = Top;
             var screen = await ResolveAsync(key, arg, token);
+            // The top is about to be removed, so it may legitimately be the same instance; guard the rest.
+            GuardNotOnStack(key, screen, ignoreIndex: _stack.Count - 1);
 
             Activate(screen);
             screen.OnPushed(arg);
@@ -184,11 +218,11 @@ namespace KidzDev.Unity.SceneNavigator
         }
 
         /// <summary>Pops every screen above the bottom one, animating the top down to the root.</summary>
-        public UniTask PopToRootAsync(CancellationToken ct = default)
+        public async UniTask PopToRootAsync(CancellationToken ct = default)
         {
             ThrowIfDisposed();
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCts.Token);
-            return _gate.RunAsync(PopToRootCoreAsync, linked.Token);
+            await _gate.RunAsync(PopToRootCoreAsync, linked.Token);
         }
 
         private async UniTask PopToRootCoreAsync(CancellationToken token)
@@ -205,11 +239,11 @@ namespace KidzDev.Unity.SceneNavigator
         /// Pops back to the nearest screen below the top whose key equals <paramref name="key"/>.
         /// No-op (logged) if no such screen exists below the current top.
         /// </summary>
-        public UniTask PopToAsync(TKey key, CancellationToken ct = default)
+        public async UniTask PopToAsync(TKey key, CancellationToken ct = default)
         {
             ThrowIfDisposed();
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetimeCts.Token);
-            return _gate.RunAsync(t => PopToCoreAsync(key, t), linked.Token);
+            await _gate.RunAsync(t => PopToCoreAsync(key, t), linked.Token);
         }
 
         private async UniTask PopToCoreAsync(TKey key, CancellationToken token)
@@ -300,6 +334,19 @@ namespace KidzDev.Unity.SceneNavigator
             return screen;
         }
 
+        private void GuardNotOnStack(TKey key, INavScreen screen, int ignoreIndex = -1)
+        {
+            for (int i = 0; i < _stack.Count; i++)
+            {
+                if (i == ignoreIndex) continue;
+                if (ReferenceEquals(_stack[i].Screen, screen))
+                    throw new InvalidOperationException(
+                        $"The screen instance for key '{key}' is already on the stack. A provider that returns " +
+                        "a shared instance (e.g. RegistryScreenProvider) cannot place the same screen at two " +
+                        "stack positions. Use a provider that instantiates a new screen per push to allow repeats.");
+            }
+        }
+
         private static void Activate(INavScreen screen)
         {
             if (screen?.Root != null && !screen.Root.activeSelf) screen.Root.SetActive(true);
@@ -314,12 +361,12 @@ namespace KidzDev.Unity.SceneNavigator
         {
             if (!EnableLogging) return;
             if (LogHandler != null) LogHandler(message);
-            else Debug.Log($"[SubSceneNavigator<{typeof(TKey).Name}>] {message}");
+            else Debug.Log($"[SubScreenNavigator<{typeof(TKey).Name}>] {message}");
         }
 
         private void ThrowIfDisposed()
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(SubSceneNavigator<TKey>));
+            if (_disposed) throw new ObjectDisposedException(nameof(SubScreenNavigator<TKey>));
         }
 
         /// <summary>

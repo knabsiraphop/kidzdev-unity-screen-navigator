@@ -1,4 +1,4 @@
-namespace KidzDev.Unity.SceneNavigator
+namespace KidzDev.Unity.ScreenNavigator
 {
     /// <summary>
     /// Controls what a navigator does when a Push/Pop/Replace is requested while a transition

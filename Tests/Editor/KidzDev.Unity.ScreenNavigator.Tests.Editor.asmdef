@@ -1,13 +1,15 @@
 {
-  "name": "KidzDev.Unity.SceneNavigator.Tests.Runtime",
-  "rootNamespace": "KidzDev.Unity.SceneNavigator.Tests",
+  "name": "KidzDev.Unity.ScreenNavigator.Tests.Editor",
+  "rootNamespace": "KidzDev.Unity.ScreenNavigator.Tests",
   "references": [
-    "KidzDev.Unity.SceneNavigator",
+    "KidzDev.Unity.ScreenNavigator",
     "UniTask",
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner"
   ],
-  "includePlatforms": [],
+  "includePlatforms": [
+    "Editor"
+  ],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
   "overrideReferences": true,

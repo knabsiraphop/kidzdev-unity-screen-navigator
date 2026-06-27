@@ -1,7 +1,7 @@
 {
-  "name": "com.kidzdev.unity.scene-navigator",
-  "version": "0.1.0",
-  "displayName": "KidzDev Unity Scene Navigator",
+  "name": "com.kidzdev.unity.screen-navigator",
+  "version": "1.0.0",
+  "displayName": "KidzDev Unity Screen Navigator",
   "description": "Stack-based UI/scene navigation for Unity — push/pop history with a back button, async transitions, and an injectable animation seam. UniTask-only, zero singleton coupling.",
   "unity": "6000.0",
   "author": {

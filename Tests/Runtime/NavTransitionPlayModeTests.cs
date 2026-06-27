@@ -6,7 +6,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 
-namespace KidzDev.Unity.SceneNavigator.Tests
+namespace KidzDev.Unity.ScreenNavigator.Tests
 {
     internal enum PmKey { A, B }
 
@@ -46,7 +46,7 @@ namespace KidzDev.Unity.SceneNavigator.Tests
             var a = new PmScreen("A");
             var b = new PmScreen("B");
             var provider = new PmProvider().Register(PmKey.A, a).Register(PmKey.B, b);
-            var nav = new SubSceneNavigator<PmKey>(provider, new CanvasGroupFadeTransition(0.05f));
+            var nav = new SubScreenNavigator<PmKey>(provider, new CanvasGroupFadeTransition(0.05f));
 
             try
             {
@@ -80,7 +80,7 @@ namespace KidzDev.Unity.SceneNavigator.Tests
         {
             var a = new PmScreen("A", withGroup: false);
             var provider = new PmProvider().Register(PmKey.A, a);
-            var nav = new SubSceneNavigator<PmKey>(provider, new CanvasGroupFadeTransition(0.05f));
+            var nav = new SubScreenNavigator<PmKey>(provider, new CanvasGroupFadeTransition(0.05f));
 
             try
             {
@@ -101,7 +101,7 @@ namespace KidzDev.Unity.SceneNavigator.Tests
         {
             var a = new PmScreen("A");
             var provider = new PmProvider().Register(PmKey.A, a);
-            var nav = new SubSceneNavigator<PmKey>(provider, new CanvasGroupFadeTransition(0.1f));
+            var nav = new SubScreenNavigator<PmKey>(provider, new CanvasGroupFadeTransition(0.1f));
 
             try
             {
@@ -115,6 +115,52 @@ namespace KidzDev.Unity.SceneNavigator.Tests
                 nav.Dispose();
                 Object.Destroy(a.Root);
             }
+        });
+
+        [UnityTest]
+        public IEnumerator Dispose_CancelsInFlightFade() => UniTask.ToCoroutine(async () =>
+        {
+            var a = new PmScreen("A");
+            var provider = new PmProvider().Register(PmKey.A, a);
+            var nav = new SubScreenNavigator<PmKey>(provider, new CanvasGroupFadeTransition(5f)); // long fade
+
+            var pushing = nav.PushAsync(PmKey.A);
+            await UniTask.NextFrame();
+            Assert.IsTrue(nav.IsTransitioning, "long fade is in flight");
+
+            nav.Dispose(); // must cancel the awaiting fade via the lifetime token
+
+            bool cancelled = false;
+            try { await pushing; }
+            catch (System.OperationCanceledException) { cancelled = true; }
+            Assert.IsTrue(cancelled, "Dispose must cancel the in-flight fade");
+            Assert.IsFalse(nav.IsTransitioning);
+
+            Object.Destroy(a.Root);
+        });
+
+        [UnityTest]
+        public IEnumerator CallerToken_CancelsInFlightFade() => UniTask.ToCoroutine(async () =>
+        {
+            var a = new PmScreen("A");
+            var provider = new PmProvider().Register(PmKey.A, a);
+            var nav = new SubScreenNavigator<PmKey>(provider, new CanvasGroupFadeTransition(5f));
+            var cts = new CancellationTokenSource();
+
+            var pushing = nav.PushAsync(PmKey.A, ct: cts.Token);
+            await UniTask.NextFrame();
+            Assert.IsTrue(nav.IsTransitioning);
+
+            cts.Cancel(); // caller token must reach the awaiting fade
+
+            bool cancelled = false;
+            try { await pushing; }
+            catch (System.OperationCanceledException) { cancelled = true; }
+            Assert.IsTrue(cancelled, "caller token must cancel the in-flight fade");
+            Assert.IsFalse(nav.IsTransitioning);
+
+            nav.Dispose();
+            Object.Destroy(a.Root);
         });
     }
 }

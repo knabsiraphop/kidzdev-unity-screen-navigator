@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace KidzDev.Unity.SceneNavigator.MailFlow
+namespace KidzDev.Unity.ScreenNavigator.MailFlow
 {
     /// <summary>A trivial in-memory mail database for the sample. Not part of the package.</summary>
     public sealed class MailStore
